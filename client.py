@@ -7,7 +7,7 @@ SERVER_PORT = 7891      # Porta que o servidor escuta
 BUFFER_SIZE = 2048      # Tamanho do buffer para recebimento de dados
 CHUNK_SIZE = 1000       # Tamanho do pedaço do arquivo a ser enviado no 'put'
 
-# --- FUNÇÃO DE ENVIO CONFIÁVEL ---
+# FUNÇÃO DE ENVIO CONFIÁVEL 
 def enviar_confiavel(sock: socket.socket, mensagem_bytes: bytes, endereco: tuple, id_pacote: int):
     """
     Envia uma mensagem EM BYTES de forma confiável.
@@ -34,7 +34,7 @@ def enviar_confiavel(sock: socket.socket, mensagem_bytes: bytes, endereco: tuple
     print(f"Falha no envio do pacote {id_pacote} após {max_tentativas} tentativas.")
     return False
 
-# --- FUNÇÃO DE RECEBIMENTO CONFIÁVEL ---
+# FUNÇÃO DE RECEBIMENTO CONFIÁVEL 
 def receber_confiavel(sock: socket.socket, endereco_servidor: tuple):
     """
     Recebe uma sequência de pacotes de dados de forma confiável.
@@ -45,41 +45,40 @@ def receber_confiavel(sock: socket.socket, endereco_servidor: tuple):
     
     while True:
         try:
-            pacote_servidor, _ = sock.recvfrom(BUFFER_SIZE)
+            pacote_servidor, _ = sock.recvfrom(BUFFER_SIZE) #Aqui ele recebe os dados
             
             # Separa o cabeçalho do payload (que está em bytes)
             try:
-                cabecalho_bytes, dados_bytes = pacote_servidor.split(b':', 2)[1:]
+                #divide por b':' e pega a partir da seguna posicao
+                id_bytes, tipo_bytes, dados_bytes = pacote_servidor.split(b':', 2)
             except ValueError:
                 # Se o split falhar, pode ser um pacote mal formatado
                  print(f"--> Pacote mal formatado recebido. Ignorando.")
                  continue
 
-            cabecalho_str = cabecalho_bytes.decode('utf-8')
-            partes_cabecalho = cabecalho_str.split(':')
-            id_recebido = int(partes_cabecalho[0])
-            tipo_pacote = partes_cabecalho[1]
-
+            id_str = id_bytes.decode('utf-8')
+            tipo_str = tipo_bytes.decode('utf-8')
+            id_recebido = int(id_str) #converte para int para fazer comparação no if
+            
             if id_recebido == id_pacote_esperado:
-                print(f"--> Recebido pacote de dados ID={id_recebido}.")
+                print(f"--> Recebido pacote de dados ID={id_str}.")
                 dados_completos += dados_bytes
                 
                 # Envia o ACK para este pacote
-                sock.sendto(f"ACK:{id_recebido}".encode('utf-8'), endereco_servidor)
+                sock.sendto(f"ACK:{id_str}".encode('utf-8'), endereco_servidor) #ack avisa ao servidor que chegou
                 
                 id_pacote_esperado = 1 - id_pacote_esperado
                 
-                if tipo_pacote == 'END':
+                if tipo_str == 'END':
                     print("Fim da transmissão de dados recebido.")
                     return dados_completos
             else:
-                print(f"--> Recebido pacote duplicado/fora de ordem ID={id_recebido}. Reenviando ACK anterior.")
+                print(f"--> Recebido pacote duplicado/fora de ordem ID={id_str}. Reenviando ACK anterior.")
                 ack_anterior = 1 - id_pacote_esperado
                 sock.sendto(f"ACK:{ack_anterior}".encode('utf-8'), endereco_servidor)
         except socket.timeout:
             print("Erro: O servidor parou de responder durante a transmissão.")
             return None
-    return None
 
 def enviar_arquivo_confiavel(sock: socket.socket, nome_arquivo: str, endereco_servidor: tuple):
     """
@@ -103,7 +102,7 @@ def enviar_arquivo_confiavel(sock: socket.socket, nome_arquivo: str, endereco_se
                 # Se o chunk está vazio, chegamos ao fim do arquivo
                 if not chunk:
                     # Envia o pacote final de forma confiável
-                    pacote_final = f"{id_pacote_dados}:END:".encode('utf-8')
+                    pacote_final = f"{id_pacote_dados}:END:".encode('utf-8') #pacote final sem chunk
                     if enviar_confiavel(sock, pacote_final, endereco_servidor, id_pacote_dados):
                         print("Arquivo enviado com sucesso.")
                         return True
@@ -118,7 +117,7 @@ def enviar_arquivo_confiavel(sock: socket.socket, nome_arquivo: str, endereco_se
                 # Usa a nossa função de envio confiável para mandar o pedaço
                 if not enviar_confiavel(sock, pacote_completo, endereco_servidor, id_pacote_dados):
                     # Se um dos chunks falhar após todas as tentativas, a transferência falha.
-                    print(f"Falha ao enviar o chunk ID={id_pacote_dados}. Abortando.")
+                    print(f"Falha ao enviar o chunk ID={id_pacote_dados}. Abortando.")  
                     return False
                 
                 # Alterna o ID para o próximo pedaço
@@ -127,18 +126,19 @@ def enviar_arquivo_confiavel(sock: socket.socket, nome_arquivo: str, endereco_se
         print(f"Erro ao ler o arquivo local: {e}")
         return False
 
-# --- LÓGICA PRINCIPAL DO CLIENTE ---
+
+#  LÓGICA PRINCIPAL DO CLIENTE 
 if __name__ == "__main__":
     # Cria o soquete UDP do cliente
-    clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # af = addres family. padrao da internet
     # Define um timeout global para todas as operações de recebimento
-    clientSocket.settimeout(3.0)
+    clientSocket.settimeout(3.0) # 3 segundos para todo as operações de recv from
 
     print("Cliente MyFTP iniciado. Digite um comando ou 'quit' para sair.")
 
-    id = 0 # ID para pacotes de COMANDO enviados pelo cliente
+    id = 0 # ID para pacotes de COMANDO enviados pelo cliente (0 ou 1)
 
-    while True:
+    while True: #looping principal
         comando = input("MyFTP> ")
 
         if not comando: # Se o usuário só apertar Enter
@@ -148,7 +148,7 @@ if __name__ == "__main__":
             break
 
         # Prepara o comando a ser enviado
-        mensagem_para_enviar = f"{id}:{comando}".encode('utf-8')
+        mensagem_para_enviar = f"{id}:{comando}".encode('utf-8') #passando para bytes
         
         # Usa a função para enviar o comando de forma confiável
         if enviar_confiavel(clientSocket, mensagem_para_enviar, (SERVER_IP, SERVER_PORT), id):
@@ -168,7 +168,7 @@ if __name__ == "__main__":
                         # Se o comando foi 'get', salva os dados em um arquivo
                         nome_arquivo = partes_comando[1]
                         try:
-                            with open(nome_arquivo, 'wb') as f:
+                            with open(nome_arquivo, 'wb') as f: #cria ou sobrescreve arquivo ja existente.
                                 f.write(dados_recebidos)
                             print(f"Arquivo '{nome_arquivo}' baixado com sucesso.")
                         except IOError as e:
