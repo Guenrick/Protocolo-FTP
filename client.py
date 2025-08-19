@@ -45,6 +45,7 @@ def enviar_arquivo_confiavel(sock, nome_arquivo, id_comando):
 
     with open(nome_arquivo, 'rb') as f:
         id_pacote = id_comando
+        print(nome_arquivo)
         while True:
             chunk = f.read(1000)
             tipo = 'DATA' if chunk else 'END'
@@ -174,4 +175,3 @@ if __name__ == "__main__":
 
     clientSocket.close()
     print("Conexão fechada.")
-
