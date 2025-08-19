@@ -14,6 +14,55 @@ clientes_ativos = {}
 lock = threading.Lock()
 
 # funcoes de comunicacao confiaveis
+
+import os
+
+USERS_FILE = "usuarios.txt"
+
+def validar_login(usuario, senha):
+    # 1. Primeiro verifica os usuários fixos
+    if USUARIOS_CADASTRADOS.get(usuario) == senha:
+        return True
+    
+    # 2. Depois verifica no arquivo usuarios.txt
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            for linha in f:
+                u, s = linha.strip().split()
+                if u == usuario and s == senha:
+                    return True
+    return False
+
+
+def registrar_usuario(args):
+    """
+    Comando: register <usuario> <senha>
+    Registra um novo usuário no arquivo usuarios.txt
+    """
+    if len(args) != 2:
+        return "ERRO: Uso correto: register <usuario> <senha>"
+
+    usuario, senha = args
+
+    # cria o arquivo se não existir
+    if not os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "w") as f:
+            pass
+
+    # verifica se o usuário já existe
+    with open(USERS_FILE, "r") as f:
+        for linha in f:
+            u, s = linha.strip().split()
+            if u == usuario:
+                return "ERRO: Usuário já existe."
+
+    # adiciona o novo usuário
+    with open(USERS_FILE, "a") as f:
+        f.write(f"{usuario} {senha}\n")
+
+    return f"Usuário '{usuario}' registrado com sucesso."
+
+
 def enviar_confiavel(sock, fila_acks, mensagem_bytes, endereco_cliente, id_pacote):
     #Funcao que de fato envia a mensagem ja partida para o cliente
     max_tentativas = 5
@@ -115,7 +164,7 @@ def processar_comando(mensagem_bytes, estado_cliente):
     partes_comando = comando_completo.split()
     comando = partes_comando[0].lower()
     
-    if not estado_cliente['logado'] and comando != 'login':
+    if not estado_cliente['logado'] and comando not in ('login', 'register'):
         return enviar_resposta_em_partes(sock, fila_acks, "ERRO: Acesso negado.", endereco_cliente, id_pacote)
 
     # Logica completa de comandos
@@ -132,15 +181,19 @@ def processar_comando(mensagem_bytes, estado_cliente):
             return enviar_resposta_em_partes(sock, fila_acks, resposta_str, endereco_cliente, id_pacote)
         else:
             return enviar_resposta_em_partes(sock, fila_acks, "ERRO: 'put' requer um nome de arquivo.", endereco_cliente, id_pacote)
+        
+    if comando == 'register':
+        resposta_str = registrar_usuario(partes_comando[1:])
+        return enviar_resposta_em_partes(sock, fila_acks, resposta_str, endereco_cliente, id_pacote)
     
     elif comando == 'login':
-        #verifica se usuario esta cadastrado e se senha eh correta.
-        if len(partes_comando) >= 3 and USUARIOS_CADASTRADOS.get(partes_comando[1]) == partes_comando[2]: 
-            estado_cliente['logado'] = True #cliente passa a estar logado
+        if len(partes_comando) >= 3 and validar_login(partes_comando[1], partes_comando[2]):
+            estado_cliente['logado'] = True
             resposta_str = "OK: Login bem-sucedido."
         else:
             resposta_str = "ERRO: Usuário ou senha inválidos."
         return enviar_resposta_em_partes(sock, fila_acks, resposta_str, endereco_cliente, id_pacote)
+
     
     elif comando == 'ls':
         #mescla todas as strings retornadas pelo listdir
@@ -258,4 +311,3 @@ def iniciar_servidor():
 
 if __name__ == "__main__":
     iniciar_servidor()
-
